@@ -5,6 +5,23 @@ Tous les changements notables seront documentes ici.
 ## [Unreleased]
 
 ### Added
+- Panneau detail 3eme colonne responsive (resume session, fichiers modifies, stats outils)
+- DiffViewer avec syntax highlighting shiki (dark/light, unified diff format)
+- CodeBlock shiki lazy-loaded dans MessageBubble (remplacement blocs code bruts)
+- Subagent tree view collapsible (API, hook, composant) integre dans detail panel
+- Pagination cursor-based GET /api/sessions/:id/messages (?limit=50&cursor=timestamp)
+- Infinite scroll messages (useInfiniteQuery + IntersectionObserver)
+- GET /api/sessions/:id/subagents endpoint
+- Tests integration daemon pipeline (7 tests parse-pipeline)
+- Tests integration API ingest + PostgreSQL testcontainers (7 tests)
+- 13 tests unitaires edge cases parser (UTF-8, queue-operation, pr-link, etc.)
+
+### Fixed
+- Troncation UTF-8 incorrecte dans tool_result (coupait les caracteres multi-octets)
+- ON CONFLICT manquant sur INSERT content_blocks (risque de doublons)
+- Index UNIQUE manquant sur content_blocks(message_id, block_index)
+
+### Previously added (Phase 0-2)
 - API Routes Next.js 15 : POST /api/ingest (Bearer auth, batch INSERT PG, pg_notify), GET /api/sessions (pagination, filtre projet), GET /api/sessions/:id/messages (content_blocks imbriques), GET /api/sessions/:id/stats (tokens, duree, top tools)
 - SSE endpoint temps reel via PG LISTEN/NOTIFY avec keepalive 30s
 - DB queries PostgreSQL avec transactions, ON CONFLICT DO NOTHING

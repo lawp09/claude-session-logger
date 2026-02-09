@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 
 export interface Session {
   id: string;
@@ -41,11 +41,15 @@ export interface Message {
 }
 
 export interface SessionStats {
-  totalMessages: number;
+  messageCount: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCacheCreationTokens: number;
+  totalCacheReadTokens: number;
+  toolUseCount: number;
+  thinkingCount: number;
   durationMs: number | null;
-  toolUsage: Record<string, number>;
+  topTools: { name: string; count: number }[];
 }
 
 export function useSessions(projectSlug?: string) {
@@ -61,13 +65,50 @@ export function useSessions(projectSlug?: string) {
   });
 }
 
+interface PaginatedMessagesResponse {
+  messages: Message[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  total: number;
+}
+
 export function useSessionMessages(sessionId: string | null) {
-  return useQuery<Message[]>({
+  return useInfiniteQuery<PaginatedMessagesResponse>({
     queryKey: ['messages', sessionId],
-    queryFn: async () => {
-      const res = await fetch(`/api/sessions/${sessionId}/messages`);
+    queryFn: async ({ pageParam }) => {
+      const params = new URLSearchParams({ limit: '50' });
+      if (pageParam) params.set('cursor', pageParam as string);
+      const res = await fetch(`/api/sessions/${sessionId}/messages?${params}`);
       if (!res.ok) throw new Error('Failed to fetch messages');
       return res.json();
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: !!sessionId,
+  });
+}
+
+export interface Subagent {
+  id: string;
+  sessionId: string;
+  agentType: string | null;
+  prompt: string | null;
+  status: string;
+  totalDurationMs: number | null;
+  totalTokens: number | null;
+  totalToolUseCount: number | null;
+  startedAt: string | null;
+  endedAt: string | null;
+}
+
+export function useSessionSubagents(sessionId: string | null) {
+  return useQuery<Subagent[]>({
+    queryKey: ['subagents', sessionId],
+    queryFn: async () => {
+      const res = await fetch(`/api/sessions/${sessionId}/subagents`);
+      if (!res.ok) throw new Error('Failed to fetch subagents');
+      const data = await res.json();
+      return data.subagents;
     },
     enabled: !!sessionId,
   });

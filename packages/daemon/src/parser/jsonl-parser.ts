@@ -9,6 +9,14 @@ import { SKIP_TYPES } from './message-types.js';
 
 const TOOL_RESULT_MAX_BYTES = 50 * 1024; // 50KB
 
+/** Truncate string to a max byte length without splitting multi-byte chars */
+function truncateToBytes(str: string, maxBytes: number): string {
+  const buf = Buffer.from(str, 'utf-8');
+  if (buf.length <= maxBytes) return str;
+  // Slice buffer and decode — Buffer.toString handles partial chars safely
+  return buf.subarray(0, maxBytes).toString('utf-8');
+}
+
 export interface ParseResult {
   messages: ParsedMessage[];
   bytesRead: number;
@@ -133,7 +141,7 @@ function mapContentBlock(block: ContentBlock, index: number): ParsedContentBlock
       }
 
       if (Buffer.byteLength(resultContent, 'utf-8') > TOOL_RESULT_MAX_BYTES) {
-        resultContent = resultContent.slice(0, TOOL_RESULT_MAX_BYTES) + '[TRUNCATED]';
+        resultContent = truncateToBytes(resultContent, TOOL_RESULT_MAX_BYTES) + '[TRUNCATED]';
       }
 
       return {

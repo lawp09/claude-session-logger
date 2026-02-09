@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS content_blocks (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_content_blocks_msg_block ON content_blocks(message_id, block_index);
 CREATE INDEX IF NOT EXISTS idx_content_blocks_message_id ON content_blocks(message_id);
 
 -- Subagents table
