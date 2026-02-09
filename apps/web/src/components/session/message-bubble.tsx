@@ -6,6 +6,8 @@ import remarkGfm from 'remark-gfm';
 import { Bot, User, ChevronRight } from 'lucide-react';
 import type { Message, ContentBlock } from '@/lib/hooks/use-sessions';
 import ToolCallBadge from './tool-call-badge';
+import CodeBlock from '@/components/ui/code-block';
+import DiffViewer from '@/components/ui/diff-viewer';
 
 function ThinkingBlock({ block }: { block: ContentBlock }) {
   const [expanded, setExpanded] = useState(false);
@@ -33,11 +35,21 @@ function ThinkingBlock({ block }: { block: ContentBlock }) {
   );
 }
 
+function isDiffContent(content: string): boolean {
+  const trimmed = content.trimStart();
+  return (
+    (trimmed.startsWith('---') && trimmed.includes('+++')) ||
+    trimmed.startsWith('@@') ||
+    trimmed.startsWith('diff --git')
+  );
+}
+
 function ToolResultBlock({ block }: { block: ContentBlock }) {
   const [expanded, setExpanded] = useState(false);
   const content = block.toolResultContent || '';
   const preview = content.slice(0, 100);
   const isError = block.toolResultIsError;
+  const isDiff = !isError && isDiffContent(content);
 
   return (
     <div className="my-1">
@@ -51,14 +63,20 @@ function ToolResultBlock({ block }: { block: ContentBlock }) {
           size={12}
           className={`transition-transform ${expanded ? 'rotate-90' : ''}`}
         />
-        {isError ? 'Erreur' : 'Resultat'}: {preview}{content.length > 100 ? '...' : ''}
+        {isError ? 'Erreur' : isDiff ? 'Diff' : 'Resultat'}: {preview}{content.length > 100 ? '...' : ''}
       </button>
       {expanded && (
-        <pre className={`mt-1 max-h-[300px] overflow-auto rounded-md p-2 text-xs ${
-          isError ? 'bg-red-500/10 text-red-300' : 'bg-surface text-text-secondary'
-        }`}>
-          {content}
-        </pre>
+        <div className="mt-1 max-h-[400px] overflow-auto">
+          {isDiff ? (
+            <DiffViewer diff={content} />
+          ) : (
+            <pre className={`rounded-md p-2 text-xs ${
+              isError ? 'bg-red-500/10 text-red-300' : 'bg-surface text-text-secondary'
+            }`}>
+              {content}
+            </pre>
+          )}
+        </div>
       )}
     </div>
   );
@@ -71,7 +89,22 @@ function renderBlock(block: ContentBlock) {
     case 'text':
       return (
         <div key={block.blockIndex} className="prose prose-invert prose-sm max-w-none text-text-primary">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              code({ className, children }) {
+                const match = /language-(\w+)/.exec(className || '');
+                const codeStr = String(children).replace(/\n$/, '');
+                if (match) {
+                  return <CodeBlock code={codeStr} language={match[1]} />;
+                }
+                return <code className={className}>{children}</code>;
+              },
+              pre({ children }) {
+                return <>{children}</>;
+              },
+            }}
+          >
             {block.textContent || ''}
           </ReactMarkdown>
         </div>

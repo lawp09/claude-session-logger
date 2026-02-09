@@ -78,7 +78,8 @@ export async function insertMessages(messages: MessageRow[]): Promise<void> {
         await client.query(
           `INSERT INTO content_blocks (message_id, block_index, block_type, text_content,
             tool_use_id, tool_name, tool_input, tool_result_content, tool_result_is_error)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (message_id, block_index) DO NOTHING`,
           [
             msg.id, block.blockIndex, block.blockType, block.textContent ?? null,
             block.toolUseId ?? null, block.toolName ?? null,
@@ -158,7 +159,66 @@ export async function getSessions(params: GetSessionsParams): Promise<{ sessions
   return { sessions, total };
 }
 
-export async function getSessionMessages(sessionId: string): Promise<Record<string, unknown>[]> {
+interface GetSessionMessagesParams {
+  sessionId: string;
+  limit?: number;
+  cursor?: string; // ISO timestamp, fetch messages BEFORE this timestamp
+}
+
+interface PaginatedMessages {
+  messages: Record<string, unknown>[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  total: number;
+}
+
+export async function getSessionMessages(params: GetSessionMessagesParams): Promise<PaginatedMessages> {
+  const { sessionId, limit = 50, cursor } = typeof params === 'string'
+    ? { sessionId: params } as GetSessionMessagesParams
+    : params;
+
+  // Get total count
+  const countResult = await pool.query(
+    'SELECT COUNT(*) AS total FROM messages WHERE session_id = $1',
+    [sessionId]
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  // First get message IDs with pagination (cursor-based: messages before cursor timestamp)
+  const queryParts = ['m.session_id = $1'];
+  const values: unknown[] = [sessionId];
+  let paramIdx = 2;
+
+  if (cursor) {
+    queryParts.push(`m.timestamp < $${paramIdx}`);
+    values.push(cursor);
+    paramIdx++;
+  }
+
+  // Fetch limit+1 to know if there are more
+  const msgIdsResult = await pool.query(
+    `SELECT m.id, m.timestamp
+     FROM messages m
+     WHERE ${queryParts.join(' AND ')}
+     ORDER BY m.timestamp DESC
+     LIMIT $${paramIdx}`,
+    [...values, limit + 1]
+  );
+
+  const hasMore = msgIdsResult.rows.length > limit;
+  const msgRows = msgIdsResult.rows.slice(0, limit);
+
+  if (msgRows.length === 0) {
+    return { messages: [], hasMore: false, nextCursor: null, total };
+  }
+
+  // Reverse to get ASC order
+  msgRows.reverse();
+
+  const nextCursor = hasMore ? msgRows[0].timestamp.toISOString() : null;
+  const msgIds = msgRows.map((r: Record<string, unknown>) => r.id as string);
+
+  // Fetch full messages with content blocks
   const result = await pool.query(
     `SELECT m.id, m.parent_uuid, m.type, m.role, m.model, m.request_id,
             m.input_tokens, m.output_tokens, m.cache_creation_tokens, m.cache_read_tokens,
@@ -167,9 +227,9 @@ export async function getSessionMessages(sessionId: string): Promise<Record<stri
             cb.tool_name, cb.tool_input, cb.tool_result_content, cb.tool_result_is_error
      FROM messages m
      LEFT JOIN content_blocks cb ON cb.message_id = m.id
-     WHERE m.session_id = $1
+     WHERE m.id = ANY($1)
      ORDER BY m.timestamp ASC, cb.block_index ASC`,
-    [sessionId]
+    [msgIds]
   );
 
   const messagesMap = new Map<string, Record<string, unknown>>();
@@ -211,7 +271,49 @@ export async function getSessionMessages(sessionId: string): Promise<Record<stri
     }
   }
 
-  return Array.from(messagesMap.values());
+  // Maintain order from msgIds
+  const messages = msgIds
+    .map((id: string) => messagesMap.get(id))
+    .filter(Boolean) as Record<string, unknown>[];
+
+  return { messages, hasMore, nextCursor, total };
+}
+
+export interface SubagentRow {
+  id: string;
+  sessionId: string;
+  agentType: string | null;
+  prompt: string | null;
+  status: string;
+  totalDurationMs: number | null;
+  totalTokens: number | null;
+  totalToolUseCount: number | null;
+  startedAt: string | null;
+  endedAt: string | null;
+}
+
+export async function getSessionSubagents(sessionId: string): Promise<SubagentRow[]> {
+  const result = await pool.query(
+    `SELECT id, session_id, agent_type, prompt, status, total_duration_ms,
+            total_tokens, total_tool_use_count, started_at, ended_at
+     FROM subagents
+     WHERE session_id = $1
+     ORDER BY started_at ASC`,
+    [sessionId]
+  );
+
+  return result.rows.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    sessionId: row.session_id as string,
+    agentType: row.agent_type as string | null,
+    prompt: row.prompt as string | null,
+    status: row.status as string,
+    totalDurationMs: row.total_duration_ms as number | null,
+    totalTokens: row.total_tokens as number | null,
+    totalToolUseCount: row.total_tool_use_count as number | null,
+    startedAt: row.started_at ? (row.started_at as Date).toISOString() : null,
+    endedAt: row.ended_at ? (row.ended_at as Date).toISOString() : null,
+  }));
 }
 
 export async function getSessionStats(sessionId: string): Promise<Record<string, unknown> | null> {

@@ -369,6 +369,241 @@ describe('parseJsonlChunk', () => {
     expect(block.toolResultContent!.length).toBeLessThan(bigContent.length);
     expect(block.toolResultContent!.endsWith('[TRUNCATED]')).toBe(true);
   });
+
+  // 26. Real-world queue-operation without uuid should be skipped
+  it('should skip queue-operation lines without uuid (real-world format)', () => {
+    const line = JSON.stringify({
+      type: 'queue-operation',
+      operation: 'dequeue',
+      timestamp: new Date().toISOString(),
+      sessionId: SESSION_ID,
+    });
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(0);
+  });
+
+  // 27. Parse message with no message field (system with hook info)
+  it('should parse system message without message field', () => {
+    const line = JSON.stringify({
+      type: 'system',
+      uuid: uuid(),
+      subtype: 'stop_hook_summary',
+      hookCount: 2,
+      hookInfos: [{ command: 'afplay' }],
+      hookErrors: [],
+      preventedContinuation: false,
+      stopReason: '',
+      hasOutput: false,
+      level: 'suggestion',
+      timestamp: new Date().toISOString(),
+      toolUseID: uuid(),
+    });
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].type).toBe('system');
+    expect(result.messages[0].subtype).toBe('stop_hook_summary');
+    expect(result.messages[0].contentBlocks).toHaveLength(0);
+  });
+
+  // 28. Parse user meta message (isMeta: true)
+  it('should parse user meta messages with isMeta flag', () => {
+    const line = JSON.stringify({
+      type: 'user',
+      uuid: uuid(),
+      parentUuid: uuid(),
+      isMeta: true,
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'user',
+        content: '<local-command-caveat>some caveat</local-command-caveat>',
+      },
+    });
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].type).toBe('user');
+    expect(result.messages[0].contentBlocks).toHaveLength(1);
+    expect(result.messages[0].contentBlocks[0].textContent).toContain('local-command-caveat');
+  });
+
+  // 29. Parse user message with extra real-world fields (cwd, gitBranch, version, slug)
+  it('should parse user messages with extra fields from real JSONL', () => {
+    const line = JSON.stringify({
+      type: 'user',
+      uuid: uuid(),
+      parentUuid: uuid(),
+      isSidechain: false,
+      userType: 'external',
+      cwd: '/Users/test/project',
+      sessionId: SESSION_ID,
+      version: '2.1.4',
+      gitBranch: 'main',
+      timestamp: new Date().toISOString(),
+      message: { role: 'user', content: 'Hello' },
+    });
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].type).toBe('user');
+    expect(result.messages[0].isSidechain).toBe(false);
+  });
+
+  // 30. Parse tool_result with array content (real-world: multiple text blocks)
+  it('should parse tool_result with array content blocks', () => {
+    const toolUseId = `toolu_${uuid()}`;
+    const line = JSON.stringify({
+      type: 'user',
+      uuid: uuid(),
+      parentUuid: uuid(),
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: toolUseId,
+          content: [
+            { type: 'text', text: 'Review report line 1' },
+            { type: 'text', text: 'agentId: a589310' },
+          ],
+          is_error: false,
+        }],
+      },
+    });
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    const block = result.messages[0].contentBlocks[0];
+    expect(block.blockType).toBe('tool_result');
+    expect(block.toolResultContent).toContain('Review report line 1');
+    expect(block.toolResultIsError).toBe(false);
+  });
+
+  // 31. Truncate multi-byte UTF-8 tool_result correctly
+  it('should truncate multi-byte UTF-8 content by bytes not characters', () => {
+    const toolUseId = `toolu_${uuid()}`;
+    // Each emoji is 4 bytes in UTF-8
+    const emoji = '\u{1F600}'; // grinning face
+    const bigContent = emoji.repeat(20 * 1024); // ~80KB in bytes
+    const line = makeUserToolResultLine(toolUseId, bigContent);
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    const block = result.messages[0].contentBlocks[0];
+    expect(block.toolResultContent!.endsWith('[TRUNCATED]')).toBe(true);
+    // Content before [TRUNCATED] should be valid UTF-8 (no broken characters)
+    const contentBeforeTruncation = block.toolResultContent!.replace('[TRUNCATED]', '');
+    expect(() => Buffer.from(contentBeforeTruncation, 'utf-8').toString('utf-8')).not.toThrow();
+  });
+
+  // 32. Parse tool_result with is_error: true
+  it('should parse tool_result with is_error flag', () => {
+    const toolUseId = `toolu_${uuid()}`;
+    const line = makeUserToolResultLine(toolUseId, 'Error: ENOENT file not found', true);
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    const block = result.messages[0].contentBlocks[0];
+    expect(block.toolResultIsError).toBe(true);
+    expect(block.toolResultContent).toBe('Error: ENOENT file not found');
+  });
+
+  // 33. Parse tool_result with empty string content
+  it('should parse tool_result with empty content string', () => {
+    const toolUseId = `toolu_${uuid()}`;
+    const line = makeUserToolResultLine(toolUseId, '');
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    const block = result.messages[0].contentBlocks[0];
+    expect(block.blockType).toBe('tool_result');
+    expect(block.toolResultContent).toBe('');
+  });
+
+  // 34. Parse assistant message with empty content array
+  it('should parse assistant message with empty content array', () => {
+    const reqId = `req_${uuid()}`;
+    const line = makeAssistantLine(reqId, [], null);
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].contentBlocks).toHaveLength(0);
+  });
+
+  // 35. Skip lines missing type field
+  it('should skip lines missing type field', () => {
+    const line = JSON.stringify({ uuid: uuid(), timestamp: new Date().toISOString() });
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(0);
+  });
+
+  // 36. Handle pr-link message type
+  it('should parse pr-link message type', () => {
+    const line = JSON.stringify({
+      type: 'pr-link',
+      uuid: uuid(),
+      timestamp: new Date().toISOString(),
+    });
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].type).toBe('pr-link');
+  });
+
+  // 37. Parse user message with toolUseResult metadata (real-world)
+  it('should parse user tool_result with toolUseResult metadata', () => {
+    const toolUseId = `toolu_${uuid()}`;
+    const line = JSON.stringify({
+      type: 'user',
+      uuid: uuid(),
+      parentUuid: uuid(),
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'user',
+        content: [{ tool_use_id: toolUseId, type: 'tool_result', content: 'output', is_error: false }],
+      },
+      toolUseResult: {
+        stdout: 'output',
+        stderr: '',
+        interrupted: false,
+        isImage: false,
+      },
+      sourceToolAssistantUUID: uuid(),
+    });
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].contentBlocks[0].toolResultContent).toBe('output');
+  });
+
+  // 38. Handle unknown content block types gracefully
+  it('should skip unknown content block types', () => {
+    const reqId = `req_${uuid()}`;
+    const line = JSON.stringify({
+      type: 'assistant',
+      uuid: uuid(),
+      requestId: reqId,
+      parentUuid: uuid(),
+      timestamp: new Date().toISOString(),
+      message: {
+        model: 'claude-opus-4-5-20251101',
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'known' },
+          { type: 'server_tool_use', id: 'st_123', name: 'web_search' },
+        ],
+        stop_reason: 'end_turn',
+      },
+    });
+    const result = parseJsonlChunk(line, SESSION_ID);
+
+    expect(result.messages).toHaveLength(1);
+    // Unknown block type should be filtered out, only text remains
+    expect(result.messages[0].contentBlocks).toHaveLength(1);
+    expect(result.messages[0].contentBlocks[0].blockType).toBe('text');
+  });
 });
 
 describe('deduplicateMessages', () => {
