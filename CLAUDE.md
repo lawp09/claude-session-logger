@@ -5,6 +5,8 @@
 Application web pour logger, persister et visualiser en temps reel toutes les sessions Claude Code.
 Architecture hybride : daemon local (Mac) + Next.js all-in-one (K3s).
 
+**Roadmap Notion** : https://www.notion.so/Claude-Code-Session-Logger-Etude-de-faisabilite-3022933a841f81218bb5f8dde1100795
+
 ## Architecture
 
 ```
