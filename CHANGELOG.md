@@ -5,6 +5,11 @@ Tous les changements notables seront documentes ici.
 ## [Unreleased]
 
 ### Added
+- Dockerfile multi-stage Next.js standalone (node:22-alpine, user non-root, healthcheck)
+- GitHub Actions workflow build + push GHCR (amd64 + arm64, cache GHA, path filter)
+- Script build-push.sh pour build/push local avec --dry-run
+- Script smoke-test.sh pour validation post-deploiement (health, ingest, sessions, SSE)
+- .dockerignore optimise pour monorepo pnpm
 - Panneau detail 3eme colonne responsive (resume session, fichiers modifies, stats outils)
 - DiffViewer avec syntax highlighting shiki (dark/light, unified diff format)
 - CodeBlock shiki lazy-loaded dans MessageBubble (remplacement blocs code bruts)
