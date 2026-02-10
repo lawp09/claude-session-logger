@@ -60,7 +60,8 @@ export function useSessions(projectSlug?: string) {
       if (projectSlug) params.set('project', projectSlug);
       const res = await fetch(`/api/sessions?${params}`);
       if (!res.ok) throw new Error('Failed to fetch sessions');
-      return res.json();
+      const data = await res.json();
+      return data.sessions;
     },
   });
 }
