@@ -1,0 +1,17 @@
+FROM node:22-alpine
+
+# Native build tools for better-sqlite3
+RUN apk add --no-cache python3 make g++
+RUN corepack enable pnpm
+
+WORKDIR /app
+
+# Copy workspace config and package manifests (for layer caching)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/web/package.json apps/web/
+COPY packages/daemon/package.json packages/daemon/
+
+RUN pnpm install --frozen-lockfile
+
+# Copy source (overridden by bind mounts in compose)
+COPY . .

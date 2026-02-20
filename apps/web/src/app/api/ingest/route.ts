@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
     session?: { sessionId?: string; projectPath?: string; projectSlug?: string; filePath?: string };
     messages?: unknown[];
     fileOffset?: number;
+    summary?: string;
   };
 
   if (!payload.session?.sessionId || !payload.session?.projectPath || !payload.session?.projectSlug || !payload.session?.filePath) {
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
       projectSlug: payload.session.projectSlug,
       filePath: payload.session.filePath,
       fileOffset: payload.fileOffset ?? 0,
+      summary: payload.summary,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -9,11 +9,12 @@ interface CodeBlockProps {
   showLineNumbers?: boolean;
 }
 
-let shikiPromise: Promise<typeof import('shiki')> | null = null;
+// Bundle web allégé : charge les langages à la demande au lieu de tout embarquer
+let shikiPromise: Promise<typeof import('shiki/bundle/web')> | null = null;
 
 function getShiki() {
   if (!shikiPromise) {
-    shikiPromise = import('shiki');
+    shikiPromise = import('shiki/bundle/web');
   }
   return shikiPromise;
 }

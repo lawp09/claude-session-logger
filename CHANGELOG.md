@@ -5,6 +5,13 @@ Tous les changements notables seront documentes ici.
 ## [Unreleased]
 
 ### Added
+- Extraction automatique du slug/summary depuis `sessions-index.json` (priorité) et `raw.slug` JSONL (fallback)
+- `upsertSession` accepte un `summary` (COALESCE : ne remplace pas une valeur existante)
+- Stats par outil (`content_blocks.tool_name`) dans `getSessionStats`
+- `docker-compose.yml` et `Dockerfile.dev` pour le développement local
+- Requêtes `getSessionMessages` et `getSessionStats` parallélisées (Promise.all)
+
+### Previously added
 - Dockerfile multi-stage Next.js standalone (node:22-alpine, user non-root, healthcheck)
 - GitHub Actions workflow build + push GHCR (amd64 + arm64, cache GHA, path filter)
 - Script build-push.sh pour build/push local avec --dry-run

@@ -88,7 +88,7 @@ function renderBlock(block: ContentBlock) {
       return <ThinkingBlock key={block.blockIndex} block={block} />;
     case 'text':
       return (
-        <div key={block.blockIndex} className="prose prose-invert prose-sm max-w-none text-text-primary">
+        <div key={block.blockIndex} className="prose prose-sm max-w-none text-text-primary">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{

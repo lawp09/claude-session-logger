@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+CREATE INDEX IF NOT EXISTS idx_messages_session_ts ON messages(session_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_request_id ON messages(request_id);
 
 -- Content blocks table

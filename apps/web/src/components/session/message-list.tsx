@@ -110,7 +110,7 @@ export default function MessageList({ sessionId }: MessageListProps) {
   }
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+    <div ref={scrollRef} className="h-full overflow-y-auto px-4 py-4">
       <div className="mx-auto max-w-3xl space-y-4">
         {/* Top sentinel for loading older messages */}
         <div ref={topSentinelRef} className="h-1" />

@@ -75,6 +75,7 @@ export interface RawJsonlMessage {
   duration?: number;
   // summary fields
   summary?: string;
+  slug?: string;
 }
 
 // Parsed message ready for DB insertion
@@ -122,4 +123,5 @@ export interface IngestPayload {
   session: SessionMetadata;
   messages: ParsedMessage[];
   fileOffset: number;
+  summary?: string;
 }

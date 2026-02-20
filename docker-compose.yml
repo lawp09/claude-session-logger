@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: csl
+      POSTGRES_PASSWORD: csl
+      POSTGRES_DB: csl
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docs/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csl -d csl"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["pnpm", "--filter", "@csl/web", "exec", "next", "dev", "-H", "0.0.0.0"]
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/web/node_modules
+      - /app/apps/web/.next
+      - /app/packages/daemon/node_modules
+    environment:
+      DATABASE_URL: postgresql://csl:csl@postgres:5432/csl
+      CSL_INGEST_TOKEN: dev-token-local
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["pnpm", "--filter", "@csl/daemon", "dev"]
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/web/node_modules
+      - /app/packages/daemon/node_modules
+      - ${HOME}/.claude/projects:/watch:ro
+      - daemon_data:/data
+    environment:
+      CSL_API_URL: http://web:3000/api/ingest
+      CSL_API_TOKEN: dev-token-local
+      CSL_WATCH_DIR: /watch
+      CSL_STATE_FILE: /data/state.json
+      CSL_BUFFER_DB: /data/buffer.db
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  daemon_data:

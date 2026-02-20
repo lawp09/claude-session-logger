@@ -221,13 +221,24 @@ describe('parseJsonlChunk', () => {
     expect(result.messages[0].subtype).toBe('local_command');
   });
 
-  // 9. Parse summary message
-  it('should parse summary message', () => {
-    const line = makeSummaryLine('VdM Upgrade: ESM Module Conflicts Fix');
+  // 9. Extraire le slug (nom auto-généré par Claude Code)
+  it('should extract slug from JSONL messages', () => {
+    const line = makeUserTextLine('Hello', { slug: 'parallel-leaping-brooks' });
     const result = parseJsonlChunk(line, SESSION_ID);
 
     expect(result.messages).toHaveLength(1);
-    expect(result.messages[0].type).toBe('summary');
+    expect(result.slug).toBe('parallel-leaping-brooks');
+  });
+
+  // 9b. Slug extrait du premier message qui en a un
+  it('should extract slug from first message only', () => {
+    const lines = [
+      makeUserTextLine('first', { slug: 'first-slug' }),
+      makeUserTextLine('second', { slug: 'second-slug' }),
+    ].join('\n');
+    const result = parseJsonlChunk(lines, SESSION_ID);
+
+    expect(result.slug).toBe('first-slug');
   });
 
   // 10. Parse queue-operation message

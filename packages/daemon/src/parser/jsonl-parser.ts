@@ -19,12 +19,14 @@ function truncateToBytes(str: string, maxBytes: number): string {
 
 export interface ParseResult {
   messages: ParsedMessage[];
+  slug?: string;
   bytesRead: number;
 }
 
 export function parseJsonlChunk(data: string, sessionId: string): ParseResult {
   const lines = data.split('\n');
   const messages: ParsedMessage[] = [];
+  let slug: string | undefined;
   const bytesRead = Buffer.byteLength(data, 'utf-8');
 
   for (const line of lines) {
@@ -38,7 +40,14 @@ export function parseJsonlChunk(data: string, sessionId: string): ParseResult {
       continue;
     }
 
-    if (!raw.type || !raw.uuid) continue;
+    if (!raw.type) continue;
+
+    // Extraire le slug de session (nom auto-généré par Claude Code)
+    if (!slug && raw.slug) {
+      slug = raw.slug;
+    }
+
+    if (!raw.uuid) continue;
 
     if (SKIP_TYPES.has(raw.type)) continue;
 
@@ -46,7 +55,7 @@ export function parseJsonlChunk(data: string, sessionId: string): ParseResult {
     if (parsed) messages.push(parsed);
   }
 
-  return { messages, bytesRead };
+  return { messages, slug, bytesRead };
 }
 
 export function deduplicateMessages(messages: ParsedMessage[]): ParsedMessage[] {

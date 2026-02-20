@@ -6,17 +6,19 @@ interface UpsertSessionParams {
   projectSlug: string;
   filePath: string;
   fileOffset: number;
+  summary?: string;
 }
 
 export async function upsertSession(params: UpsertSessionParams): Promise<void> {
-  const { sessionId, projectPath, projectSlug, filePath, fileOffset } = params;
+  const { sessionId, projectPath, projectSlug, filePath, fileOffset, summary } = params;
   await pool.query(
-    `INSERT INTO sessions (id, project_path, project_slug, file_path, file_offset, started_at)
-     VALUES ($1, $2, $3, $4, $5, NOW())
+    `INSERT INTO sessions (id, project_path, project_slug, file_path, file_offset, summary, started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
      ON CONFLICT (id) DO UPDATE SET
        file_offset = GREATEST(sessions.file_offset, $5),
+       summary = COALESCE($6, sessions.summary),
        ended_at = NOW()`,
-    [sessionId, projectPath, projectSlug, filePath, fileOffset]
+    [sessionId, projectPath, projectSlug, filePath, fileOffset, summary ?? null]
   );
 }
 
@@ -177,14 +179,7 @@ export async function getSessionMessages(params: GetSessionMessagesParams): Prom
     ? { sessionId: params } as GetSessionMessagesParams
     : params;
 
-  // Get total count
-  const countResult = await pool.query(
-    'SELECT COUNT(*) AS total FROM messages WHERE session_id = $1',
-    [sessionId]
-  );
-  const total = parseInt(countResult.rows[0].total, 10);
-
-  // First get message IDs with pagination (cursor-based: messages before cursor timestamp)
+  // Construire la requête de pagination (utilise idx_messages_session_ts)
   const queryParts = ['m.session_id = $1'];
   const values: unknown[] = [sessionId];
   let paramIdx = 2;
@@ -195,15 +190,23 @@ export async function getSessionMessages(params: GetSessionMessagesParams): Prom
     paramIdx++;
   }
 
-  // Fetch limit+1 to know if there are more
-  const msgIdsResult = await pool.query(
-    `SELECT m.id, m.timestamp
-     FROM messages m
-     WHERE ${queryParts.join(' AND ')}
-     ORDER BY m.timestamp DESC
-     LIMIT $${paramIdx}`,
-    [...values, limit + 1]
-  );
+  // Count et IDs en parallèle pour éliminer un round-trip séquentiel
+  const [countResult, msgIdsResult] = await Promise.all([
+    pool.query(
+      'SELECT COUNT(*) AS total FROM messages WHERE session_id = $1',
+      [sessionId]
+    ),
+    pool.query(
+      `SELECT m.id, m.timestamp
+       FROM messages m
+       WHERE ${queryParts.join(' AND ')}
+       ORDER BY m.timestamp DESC
+       LIMIT $${paramIdx}`,
+      [...values, limit + 1]
+    ),
+  ]);
+
+  const total = parseInt(countResult.rows[0].total, 10);
 
   const hasMore = msgIdsResult.rows.length > limit;
   const msgRows = msgIdsResult.rows.slice(0, limit);
@@ -317,34 +320,36 @@ export async function getSessionSubagents(sessionId: string): Promise<SubagentRo
 }
 
 export async function getSessionStats(sessionId: string): Promise<Record<string, unknown> | null> {
-  const tokenResult = await pool.query(
-    `SELECT
-       COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
-       COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
-       COALESCE(SUM(cache_creation_tokens), 0) AS total_cache_creation_tokens,
-       COALESCE(SUM(cache_read_tokens), 0) AS total_cache_read_tokens,
-       COUNT(*) AS message_count,
-       MIN(timestamp) AS first_message,
-       MAX(timestamp) AS last_message
-     FROM messages
-     WHERE session_id = $1`,
-    [sessionId]
-  );
+  // Exécuter les deux requêtes en parallèle
+  const [tokenResult, toolResult] = await Promise.all([
+    pool.query(
+      `SELECT
+         COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
+         COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
+         COALESCE(SUM(cache_creation_tokens), 0) AS total_cache_creation_tokens,
+         COALESCE(SUM(cache_read_tokens), 0) AS total_cache_read_tokens,
+         COUNT(*) AS message_count,
+         MIN(timestamp) AS first_message,
+         MAX(timestamp) AS last_message
+       FROM messages
+       WHERE session_id = $1`,
+      [sessionId]
+    ),
+    pool.query(
+      `SELECT cb.block_type, cb.tool_name, COUNT(*) AS cnt
+       FROM content_blocks cb
+       JOIN messages m ON m.id = cb.message_id
+       WHERE m.session_id = $1
+       GROUP BY cb.block_type, cb.tool_name`,
+      [sessionId]
+    ),
+  ]);
 
   if (tokenResult.rows.length === 0 || parseInt(tokenResult.rows[0].message_count, 10) === 0) {
     return null;
   }
 
   const stats = tokenResult.rows[0];
-
-  const toolResult = await pool.query(
-    `SELECT cb.block_type, cb.tool_name, COUNT(*) AS cnt
-     FROM content_blocks cb
-     JOIN messages m ON m.id = cb.message_id
-     WHERE m.session_id = $1
-     GROUP BY cb.block_type, cb.tool_name`,
-    [sessionId]
-  );
 
   let toolUseCount = 0;
   let thinkingCount = 0;

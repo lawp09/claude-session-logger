@@ -19,24 +19,34 @@
   --color-border: #2b2b2b;
 }
 
-@media (prefers-color-scheme: light) {
-  @theme {
-    --color-background: #ffffff;
-    --color-sidebar: #f9fafb;
-    --color-surface: #f3f4f6;
-    --color-bubble-user: #e8edf3;
-    --color-accent: #10b981;
-    --color-accent-hover: #059669;
-    --color-thinking: #d97706;
-    --color-diff-add-bg: #dcfce7;
-    --color-diff-add-text: #166534;
-    --color-diff-remove-bg: #fee2e2;
-    --color-diff-remove-text: #991b1b;
-    --color-text-primary: #111827;
-    --color-text-secondary: #6b7280;
-    --color-text-muted: #9ca3af;
-    --color-border: #e5e7eb;
-  }
+/* Light mode - activated by next-themes class on <html> */
+.light {
+  --color-background: #ffffff;
+  --color-sidebar: #f9fafb;
+  --color-surface: #f3f4f6;
+  --color-bubble-user: #e8edf3;
+  --color-accent: #10b981;
+  --color-accent-hover: #059669;
+  --color-thinking: #d97706;
+  --color-diff-add-bg: #dcfce7;
+  --color-diff-add-text: #166534;
+  --color-diff-remove-bg: #fee2e2;
+  --color-diff-remove-text: #991b1b;
+  --color-text-primary: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #9ca3af;
+  --color-border: #e5e7eb;
+}
+
+/* Prose colors follow theme via CSS variables */
+.prose {
+  --tw-prose-body: var(--color-text-primary);
+  --tw-prose-headings: var(--color-text-primary);
+  --tw-prose-links: var(--color-accent);
+  --tw-prose-bold: var(--color-text-primary);
+  --tw-prose-code: var(--color-text-primary);
+  --tw-prose-pre-bg: var(--color-surface);
+  --tw-prose-pre-code: var(--color-text-secondary);
 }
 
 body {
